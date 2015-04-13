@@ -1,6 +1,6 @@
 <?php
-include "Table.php";
-include "Mysqli.php";
+include "Db\Mysqli.php";
+include "Db\Table.php";
 include "UserModel.php";
 
 $dbConfig = array(
@@ -38,9 +38,9 @@ $dbConfig = array(
     ),
 );
 //设置数据库
-Xz\Db\Table::setConfig($dbConfig);
+Db\Table::setConfig($dbConfig);
 
-$ob = new Xz\Db\UserModel();
+$ob = new Db\UserModel();
  
 //自定义SQl查询
 $rs = $ob->query("select * from gongchanginfo.gc_company where cid in( ?, ?) and status = ? ", array(19, 30, 1));

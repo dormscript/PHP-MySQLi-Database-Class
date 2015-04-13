@@ -1,10 +1,9 @@
 <?php
-namespace Xz\Db;
+namespace Models;
 
-class UserModel extends Table
+class UserModel extends Db\Table
 {
-    public $_schema  = 'gongchanginfo';
-    public $_name    = 'gc_company';
-    public $_primary = 'cid';
+    public $_schema  = 'SchemaName';
+    public $_name    = 'Tablename';
     public $_DbClusterName = 'default';
 }
