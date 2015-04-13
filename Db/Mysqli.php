@@ -1,9 +1,11 @@
 <?php
+namespace Db;
+
 /**
- * MysqliDb Class
+ * Mysqli Class
  *
  * @category  Database Access
- * @package   MysqliDb
+ * @package   Mysqli
  * @author    Jeffery Way <jeffrey@jeffrey-way.com>
  * @author    Josh Campbell <jcampbell@ajillion.com>
  * @author    Alexander V. Butenko <a.butenka@gmail.com>
@@ -12,95 +14,48 @@
  * @version   2.0
  **/
 
-class MysqliDb
+class Mysqli
 {
+    protected static $_instances; //多个实例
+    protected static $DbClusterConfig; //多个数据库集群的配置
+    protected static $_prefix; //表前缀
+    protected $_mysqlConnect; //所有打开的mysql连接
+    protected $_mysqli; //当前正在使用的mysql连接
+    protected $_query; //The SQL query to be prepared and executed
+    protected $_lastQuery; //The previously executed SQL query
+    protected $_join       = array(); //An array that holds where joins
+    protected $_where      = array(); //An array that holds where conditions 'fieldname' => 'value'
+    protected $_orderBy    = array(); //Dynamic type list for order by condition value
+    protected $_groupBy    = array(); //Dynamic type list for group by condition value
+    protected $_bindParams = array(''); //Dynamic array that holds a combination of where condition/table data value types and parameter referances； Create the empty 0 index
+    public $count          = 0; //Variable which holds an amount of returned rows during get/getOne/select queries
+    protected $_stmtError; //Variable which holds last statement error
+    public $isSubQuery = false; //Is Subquery object
     /**
-     * Static instance of self
-     *
-     * @var MysqliDb
+     * 魔法函数
+     * @param  [type] $name [description]
+     * @return [type]       [description]
      */
-    protected static $_instance;
-    /**
-     * Table prefix
-     *
-     * @var string
-     */
-    protected static $_prefix;
-    /**
-     * MySQLi instance
-     *
-     * @var mysqli
-     */
-    protected $_mysqli;
-    /**
-     * The SQL query to be prepared and executed
-     *
-     * @var string
-     */
-    protected $_query;
-    /**
-     * The previously executed SQL query
-     *
-     * @var string
-     */
-    protected $_lastQuery;
-    /**
-     * An array that holds where joins
-     *
-     * @var array
-     */
-    protected $_join = array();
-    /**
-     * An array that holds where conditions 'fieldname' => 'value'
-     *
-     * @var array
-     */
-    protected $_where = array();
-    /**
-     * Dynamic type list for order by condition value
-     */
-    protected $_orderBy = array();
-    /**
-     * Dynamic type list for group by condition value
-     */
-    protected $_groupBy = array();
-    /**
-     * Dynamic array that holds a combination of where condition/table data value types and parameter referances
-     *
-     * @var array
-     */
-    protected $_bindParams = array(''); // Create the empty 0 index
-    /**
-     * Variable which holds an amount of returned rows during get/getOne/select queries
-     *
-     * @var string
-     */
-    public $count = 0;
-    /**
-     * Variable which holds last statement error
-     *
-     * @var string
-     */
-    protected $_stmtError;
-
-    /**
-     * Database credentials
-     *
-     * @var string
-     */
-    protected $host;
-    protected $username;
-    protected $password;
-    protected $db;
-    protected $port;
-    protected $charset;
-
-    /**
-     * Is Subquery object
-     *
-     */
-    protected $isSubQuery = false;
-
+    public function __get($name)
+    {
+        return $this->$name;
+    }
+    public static function getInstance($DbClusterName = "default")
+    {
+        if (isset(self::$_instances[$DbClusterName])) {
+            return self::$_instances[$DbClusterName];
+        } else {
+            self::$_instances[$DbClusterName] = new self($DbClusterName);
+            return self::$_instances[$DbClusterName];
+        }
+    }
+    //一次性把所有需要的mysql配置设置进来
+    public static function setConfig(array $config)
+    {
+        foreach ($config as $k => $v) {
+            self::$DbClusterConfig[$k] = $v;
+        }
+    }
     /**
      * @param string $host
      * @param string $username
@@ -108,78 +63,39 @@ class MysqliDb
      * @param string $db
      * @param int $port
      */
-    public function __construct($host = null, $username = null, $password = null, $db = null, $port = null, $charset = 'utf8')
+    private function __construct($DbClusterName)
     {
-        $isSubQuery = false;
-
-        // if params were passed as array
-        if (is_array($host)) {
-            foreach ($host as $key => $val) {
-                $$key = $val;
-            }
-
-        }
-        // if host were set as mysqli socket
-        if (is_object($host)) {
-            $this->_mysqli = $host;
-        } else {
-            $this->host = $host;
-        }
-
-        $this->username = $username;
-        $this->password = $password;
-        $this->db       = $db;
-        $this->port     = $port;
-        $this->charset  = $charset;
-
-        if ($isSubQuery) {
-            $this->isSubQuery = true;
-            return;
-        }
-
-        // for subqueries we do not need database connection and redefine root instance
-        if (!is_object($host)) {
-            $this->connect();
-        }
-
+        $this->config = self::$DbClusterConfig[$DbClusterName];
+        // if ($isSubQuery) {
+        //     $this->isSubQuery = true;
+        //     return;
+        // }
+        $this->connect();
         $this->setPrefix();
-        self::$_instance = $this;
     }
 
     /**
      * A method to connect to the database
      *
      */
-    public function connect()
+    public function connect($type = "read")
     {
-        if ($this->isSubQuery) {
+        if (isset($this->_mysqlConnect[$type])) {
+            $this->_mysqli = $this->_mysqlConnect[$type];
             return;
         }
-
-        if (empty($this->host)) {
-            die('Mysql host is not set');
+        $param                      = $this->config[$type];
+        $this->_mysqlConnect[$type] = new \mysqli(
+            $param['host'],
+            $param['user'],
+            $param['passwd'],
+            $param['db'],
+            intval($param['port'])
+        );
+        if (isset($param['charset'])) {
+            $this->_mysqlConnect[$type]->set_charset($param['charset']);
         }
-
-        $this->_mysqli = new mysqli($this->host, $this->username, $this->password, $this->db, $this->port)
-        or die('There was a problem connecting to the database');
-
-        if ($this->charset) {
-            $this->_mysqli->set_charset($this->charset);
-        }
-
-    }
-    /**
-     * A method of returning the static instance to allow access to the
-     * instantiated object from within another class.
-     * Inheriting this class would require reloading connection info.
-     *
-     * @uses $db = MySqliDb::getInstance();
-     *
-     * @return object Returns the current instance.
-     */
-    public static function getInstance()
-    {
-        return self::$_instance;
+        $this->_mysqli = $this->_mysqlConnect[$type];
     }
 
     /**
@@ -206,7 +122,6 @@ class MysqliDb
     public function setPrefix($prefix = '')
     {
         self::$_prefix = $prefix;
-        return $this;
     }
 
     /**
@@ -263,7 +178,6 @@ class MysqliDb
 
         return $this->_dynamicBindResults($stmt);
     }
-
     /**
      * A convenient SELECT * function.
      *
@@ -274,11 +188,9 @@ class MysqliDb
      */
     public function get($tableName, $numRows = null, $columns = '*')
     {
-        echo "her222";exit();
         if (empty($columns)) {
             $columns = '*';
         }
-
         $column       = is_array($columns) ? implode(', ', $columns) : $columns;
         $this->_query = "SELECT $column FROM " . self::$_prefix . $tableName;
         $stmt         = $this->_buildQuery($numRows);
@@ -286,11 +198,9 @@ class MysqliDb
         if ($this->isSubQuery) {
             return $this;
         }
-
         $stmt->execute();
         $this->_stmtError = $stmt->error;
         $this->reset();
-
         return $this->_dynamicBindResults($stmt);
     }
 
@@ -326,7 +236,6 @@ class MysqliDb
     public function getValue($tableName, $column)
     {
         $res = $this->get($tableName, 1, "{$column} as retval");
-
         if (isset($res[0]["retval"])) {
             return $res[0]["retval"];
         }
@@ -431,12 +340,12 @@ class MysqliDb
     /**
      * This method allows you to specify multiple (method chaining optional) AND WHERE statements for SQL queries.
      *
-     * @uses $MySqliDb->where('id', 7)->where('title', 'MyTitle');
+     * @uses $MySqli->where('id', 7)->where('title', 'MyTitle');
      *
      * @param string $whereProp  The name of the database field.
      * @param mixed  $whereValue The value of the database field.
      *
-     * @return MysqliDb
+     * @return Mysqli
      */
     public function where($whereProp, $whereValue = null, $operator = null)
     {
@@ -445,18 +354,34 @@ class MysqliDb
         }
 
         $this->_where[] = array("AND", $whereValue, $whereProp);
-        return $this;
+    }
+    /**
+     * 测试函数 输出调试SQL
+     * @return [type] [description]
+     */
+    public function test() {
+        $this->_buildJoin();
+        $this->_buildTableData(null);
+        $this->_buildWhere();
+        $this->_buildGroupBy();
+        $this->_buildOrderBy();
+        $this->_buildLimit(null);
+
+        $this->_lastQuery = $this->replacePlaceHolders($this->_query, $this->_bindParams);
+        
+        echo "\n_query    :".$this->_lastQuery;
+        echo "\n_lastQuery:".$this->_query;
     }
 
     /**
      * This method allows you to specify multiple (method chaining optional) OR WHERE statements for SQL queries.
      *
-     * @uses $MySqliDb->orWhere('id', 7)->orWhere('title', 'MyTitle');
+     * @uses $MySqli->orWhere('id', 7)->orWhere('title', 'MyTitle');
      *
      * @param string $whereProp  The name of the database field.
      * @param mixed  $whereValue The value of the database field.
      *
-     * @return MysqliDb
+     * @return Mysqli
      */
     public function orWhere($whereProp, $whereValue = null, $operator = null)
     {
@@ -465,18 +390,17 @@ class MysqliDb
         }
 
         $this->_where[] = array("OR", $whereValue, $whereProp);
-        return $this;
     }
     /**
      * This method allows you to concatenate joins for the final SQL statement.
      *
-     * @uses $MySqliDb->join('table1', 'field1 <> field2', 'LEFT')
+     * @uses $MySqli->join('table1', 'field1 <> field2', 'LEFT')
      *
      * @param string $joinTable The name of the table.
      * @param string $joinCondition the condition.
      * @param string $joinType 'LEFT', 'INNER' etc.
      *
-     * @return MysqliDb
+     * @return Mysqli
      */
     public function join($joinTable, $joinCondition, $joinType = '')
     {
@@ -492,18 +416,16 @@ class MysqliDb
         }
 
         $this->_join[] = array($joinType, $joinTable, $joinCondition);
-
-        return $this;
     }
     /**
      * This method allows you to specify multiple (method chaining optional) ORDER BY statements for SQL queries.
      *
-     * @uses $MySqliDb->orderBy('id', 'desc')->orderBy('name', 'desc');
+     * @uses $MySqli->orderBy('id', 'desc')->orderBy('name', 'desc');
      *
      * @param string $orderByField The name of the database field.
      * @param string $orderByDirection Order direction.
      *
-     * @return MysqliDb
+     * @return Mysqli
      */
     public function orderBy($orderByField, $orderbyDirection = "DESC", $customFields = null)
     {
@@ -524,24 +446,22 @@ class MysqliDb
         }
 
         $this->_orderBy[$orderByField] = $orderbyDirection;
-        return $this;
     }
 
     /**
      * This method allows you to specify multiple (method chaining optional) GROUP BY statements for SQL queries.
      *
-     * @uses $MySqliDb->groupBy('name');
+     * @uses $MySqli->groupBy('name');
      *
      * @param string $groupByField The name of the database field.
      *
-     * @return MysqliDb
+     * @return Mysqli
      */
     public function groupBy($groupByField)
     {
         $groupByField = preg_replace("/[^-a-z0-9\.\(\),_]+/i", '', $groupByField);
 
         $this->_groupBy[] = $groupByField;
-        return $this;
     }
 
     /**
@@ -677,7 +597,6 @@ class MysqliDb
         $this->_buildLimit($numRows);
 
         $this->_lastQuery = $this->replacePlaceHolders($this->_query, $this->_bindParams);
-
         if ($this->isSubQuery) {
             return;
         }
@@ -701,7 +620,7 @@ class MysqliDb
      *
      * @return array The results of the SQL fetch.
      */
-    protected function _dynamicBindResults(mysqli_stmt $stmt)
+    protected function _dynamicBindResults(\mysqli_stmt $stmt)
     {
         $parameters = array();
         $results    = array();
@@ -1162,17 +1081,17 @@ class MysqliDb
     }
 
     /**
-     * Method creates new mysqlidb object for a subquery generation
+     * Method creates new mysqli object for a subquery generation
      */
     public static function subQuery($subQueryAlias = "")
     {
-        return new MysqliDb(array('host' => $subQueryAlias, 'isSubQuery' => true));
+        return new Mysqli(array('host' => $subQueryAlias, 'isSubQuery' => true));
     }
 
     /**
-     * Method returns a copy of a mysqlidb subquery object
+     * Method returns a copy of a mysqli subquery object
      *
-     * @param object new mysqlidb object
+     * @param object new mysqli object
      */
     public function copy()
     {

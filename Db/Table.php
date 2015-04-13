@@ -1,5 +1,5 @@
 <?php
-namespace Xz\Db;
+namespace Models;
 
 class Table
 {
