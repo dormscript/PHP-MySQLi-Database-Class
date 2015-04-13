@@ -1,125 +1,109 @@
 <?php
-require_once('MysqliDb.php');
-error_reporting(E_ALL);
-$action = 'adddb';
-$data = array();
+include "Table.php";
+include "Mysqli.php";
+include "UserModel.php";
 
-function printUsers () {
-    global $db;
+$dbConfig = array(
+    'default' => array(
+        'read'  => array(
+            'host'   => '192.168.8.18',
+            'user'   => 'root',
+            'passwd' => 'gc7232275',
+            'port'   => '',
+            'db'     => 'test',
+        ),
+        'write' => array(
+            'host'   => '192.168.8.18',
+            'user'   => 'root',
+            'passwd' => 'gc7232275',
+            'port'   => '',
+            'db'     => 'test',
+        ),
+    ),
+    'product' => array(
+        'read'  => array(
+            'host'   => '192.168.8.18',
+            'user'   => 'root',
+            'passwd' => 'gc7232275',
+            'port'   => '',
+            'db'     => 'test',
+        ),
+        'write' => array(
+            'host'   => '192.168.8.18',
+            'user'   => 'root',
+            'passwd' => 'gc7232275',
+            'port'   => '',
+            'db'     => 'test',
+        ),
+    ),
+);
+//设置数据库
+Xz\Db\Table::setConfig($dbConfig);
 
-    $users = $db->get ("users");
-    if ($db->count == 0) {
-        echo "<td align=center colspan=4>No users found</td>";
-        return;
-    }
-    foreach ($users as $u) {
-        echo "<tr>
-            <td>{$u['id']}</td>
-            <td>{$u['login']}</td>
-            <td>{$u['firstName']} {$u['lastName']}</td>
-            <td>
-                <a href='index.php?action=rm&id={$u['id']}'>rm</a> ::
-                <a href='index.php?action=mod&id={$u['id']}'>ed</a>
-            </td>
-        </tr>";
-    }
-}
+$ob = new Xz\Db\UserModel();
+ 
+//自定义SQl查询
+$rs = $ob->query("select * from gongchanginfo.gc_company where cid in( ?, ?) and status = ? ", array(19, 30, 1));
+print_r($rs);
+ 
+//根据where组合查询
+$rs = $ob->where("cid", array(24, 50), 'BETWEEN')
+         //->where("province", 26)
+         //->orwhere("city", 11)
+         //->where("(cate1 = ? or cate2 in (?,?) )", array(11, 4,5))
+         //->orderBy("cid", "asc")
+         //->orderBy('addtime', 'asc')
+         //->getCount();
+         ->findAll(array("cid", "companyname"), array(5, 4))
+         //->findOne(array('cid', 'companyname'))
+;
+//在findAll调用之前，可以调用test输出测试信息
+//$ob->test();exit();
 
-function action_adddb () {
-    global $db;
+print_r($rs);
+//exit();
 
-    $data = Array(
-        'login' => $_POST['login'],
-        'customerId' => 1,
-        'firstName' => $_POST['firstName'],
-        'lastName' => $_POST['lastName'],
-        'password' => $db->func('SHA1(?)',Array ($_POST['password'] . 'salt123')),
-        'createdAt' => $db->now(),
-        'expires' => $db->now('+1Y')
-    );
-    $id = $db->insert ('users', $data);
-    header ("Location: index.php");
-    exit;
-}
 
-function action_moddb () {
-    global $db;
+//insert demo
+$data = array(
+    'companyname' => '测试企业名称',
+    'uid'         => 23,
+    'username'    => 'dodododod',
+    'product'     => 'led|jpg|手机',
+    'cate1'       => 133,
+    'cate2'       => 1212,
+    'website'     => 'www.demo.com',
+    'addtime'     => '',
+);
+$b = $ob->insert($data);
+var_dump($b); 
 
-    $data = Array(
-        'login' => $_POST['login'],
-        'customerId' => 1,
-        'firstName' => $_POST['firstName'],
-        'lastName' => $_POST['lastName'],
-    );
-    $id = (int)$_POST['id'];
-    $db->where ("customerId",1);
-    $db->where ("id", $id);
-    $db->update ('users', $data);
-    header ("Location: index.php");
-    exit;
+//update demo
+$updata = array(
+    'companyname' => "测试一个名字",
+    'addtime' => '121111111111',
+);
+$a  = $ob->where("cid", $b)
+    ->update($updata);
+var_dump($a);
 
-}
-function action_rm () {
-    global $db;
-    $id = (int)$_GET['id'];
-    $db->where ("customerId",1);
-    $db->where ("id", $id);
-    $db->delete ('users');
-    header ("Location: index.php");
-    exit;
+//find demo
+$c = $ob->where("cid", $b)
+    ->findAll();
+print_r($c);
+ 
 
-}
-function action_mod () {
-    global $db;
-    global $data;
-    global $action;
+//delete demo
+$d = $ob->where("cid", $b)
+    ->delete();
+//$ob->test();
+var_dump($d);
+ 
 
-    $action = 'moddb';
-    $id = (int)$_GET['id'];
-    $db->where ("id", $id);
-    $data = $db->getOne ("users");
-}
+//find demo
+$e = $ob->where("cid", $b)
+    ->findAll();
+var_dump($e);
 
-$db = new Mysqlidb ('localhost', 'root', '', 'testdb');
-if ($_GET) {
-    $f = "action_".$_GET['action'];
-    if (function_exists ($f)) {
-        $f();
-    }
-}
+//echo $rs . "\n";
 
-?>
-<!DOCTYPE html>
-
-<html lang="en">
-<head>
-	<meta charset="utf-8">
-	<title>Users</title>
-</head>
-<body>
-
-<center>
-<h3>Users:</h3>
-<table width='50%'>
-    <tr bgcolor='#cccccc'>
-        <th>ID</th>
-        <th>Login</th>
-        <th>Name</th>
-        <th>Action</th>
-    </tr>
-    <?php printUsers();?>
-
-</table>
-<hr width=50%>
-<form action='index.php?action=<?php echo $action?>' method=post>
-    <input type=hidden name='id' value='<?php echo $data['id']?>'>
-    <input type=text name='login' required placeholder='Login' value='<?php echo $data['login']?>'>
-    <input type=text name='firstName' required placeholder='First Name' value='<?php echo $data['firstName']?>'>
-    <input type=text name='lastName' required placeholder='Last Name' value='<?php echo $data['lastName']?>'>
-    <input type=password name='password' placeholder='Password'>
-    <input type=submit value='New User'></td>
-<form>
-</table>
-</center>
-</body>
-</html>
